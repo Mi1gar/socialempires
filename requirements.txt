@@ -1,2 +1,4 @@
-flask
+flask>=3.0
+gunicorn==22.*
+psycopg2-binary==2.9.*
 jsonpatch
