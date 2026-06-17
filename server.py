@@ -49,14 +49,18 @@ print (" [+] Configuring server routes...")
 @app.route("/")
 def index():
     """Landing page: choose between Ruffle (modern browser) and FlashBrowser."""
-    return """
+    has_session = 'USERID' in session and session['USERID'] in all_saves_userid()
+    continue_btn = ""
+    if has_session:
+        continue_btn = f'<a class="btn btn-continue" href="/ruffle.html">🔄 Devam Et (Ruffle)</a><a class="btn btn-secondary" href="/play.html">💾 Devam Et (FlashBrowser)</a>'
+    return f"""
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <title>Social Emperors</title>
     <style>
-        body {
+        body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #1a1a2e;
             color: #eee;
@@ -65,17 +69,17 @@ def index():
             align-items: center;
             min-height: 100vh;
             margin: 0;
-        }
-        .box {
+        }}
+        .box {{
             background: #16213e;
             border-radius: 12px;
             padding: 40px;
             text-align: center;
             max-width: 500px;
             box-shadow: 0 4px 24px rgba(0,0,0,0.3);
-        }
-        h1 { margin-top: 0; color: #e94560; }
-        .btn {
+        }}
+        h1 {{ margin-top: 0; color: #e94560; }}
+        .btn {{
             display: block;
             margin: 16px auto;
             padding: 14px 32px;
@@ -84,19 +88,25 @@ def index():
             font-size: 16px;
             font-weight: 600;
             transition: transform 0.1s, box-shadow 0.1s;
-        }
-        .btn:hover { transform: scale(1.03); }
-        .btn-primary { background: #e94560; color: #fff; }
-        .btn-secondary { background: #0f3460; color: #ccc; border: 1px solid #333; }
-        .note { font-size: 13px; color: #888; margin-top: 24px; }
+        }}
+        .btn:hover {{ transform: scale(1.03); }}
+        .btn-primary {{ background: #e94560; color: #fff; }}
+        .btn-secondary {{ background: #0f3460; color: #ccc; border: 1px solid #333; }}
+        .btn-continue {{ background: #2d6a4f; color: #fff; }}
+        .note {{ font-size: 13px; color: #888; margin-top: 24px; }}
+        .section {{ margin: 24px 0; border-top: 1px solid #333; padding-top: 16px; }}
     </style>
 </head>
 <body>
     <div class="box">
         <h1>🔥 Social Emperors</h1>
         <p>Tarayicinda oyna — hicbir sey indirmene gerek yok.</p>
-        <a class="btn btn-primary" href="/ruffle.html">🎮 Tarayicida Oyna (Ruffle)</a>
-        <a class="btn btn-secondary" href="/play.html">💾 FlashBrowser ile Oyna</a>
+        {continue_btn}
+        <div class="section">
+            <p style="color:#aaa; font-size:14px;">Yeni Oyun</p>
+            <a class="btn btn-primary" href="/new.html?mode=ruffle">🎮 Tarayicida Oyna (Ruffle)</a>
+            <a class="btn btn-secondary" href="/new.html?mode=play">💾 FlashBrowser ile Oyna</a>
+        </div>
         <p class="note">
             ⚠️ Ruffle ile oynarken bazi ozellikler calismayabilir.<br>
             Sorun yasarsan FlashBrowser indirip ikinci secenegi kullan.
@@ -159,7 +169,8 @@ def ruffle():
 def new():
     session['USERID'] = new_village()
     session['GAMEVERSION'] = "SocialEmpires0926bsec.swf"
-    return redirect("play.html")
+    mode = request.args.get('mode', 'play')
+    return redirect(f"{mode}.html")
 
 @app.route("/crossdomain.xml")
 def crossdomain():
