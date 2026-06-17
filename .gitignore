@@ -12,3 +12,19 @@ Include/
 Lib/
 Scripts/
 pyvenv.cfg
+
+# Python
+*.py[cod]
+*.pyo
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Game saves (local dev only — on Render these go to PostgreSQL)
+*.save.json
+
+# OS
+Thumbs.db
