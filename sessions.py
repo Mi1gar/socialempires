@@ -12,6 +12,8 @@ from version import migrate_loaded_save
 from constants import Constant
 
 from bundle import VILLAGES_DIR, SAVES_DIR
+from db import query, execute, create_tables
+import json as _json_module
 
 __villages = {}  # ALL static neighbors
 '''__villages = {
@@ -35,64 +37,73 @@ __saves = {}  # ALL saved villages
 
 __initial_village = json.load(open(os.path.join(VILLAGES_DIR, "initial.json")))
 
+
+def migrate_static_villages_from_disk():
+    """One-time migration: load static villages from JSON files into PostgreSQL.
+    Idempotent — skips if static_villages table already has data.
+    """
+    try:
+        count_rows = query("SELECT COUNT(*) AS cnt FROM static_villages")
+        if count_rows and count_rows[0]["cnt"] > 0:
+            return  # Already migrated
+    except Exception:
+        pass  # Table might not exist yet
+
+    if not os.path.exists(VILLAGES_DIR):
+        return
+
+    for filename in os.listdir(VILLAGES_DIR):
+        if not filename.endswith(".json") or filename == "initial.json":
+            continue
+        filepath = os.path.join(VILLAGES_DIR, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = _json_module.load(f)
+            pid = data.get("playerInfo", {}).get("pid", filename.replace(".json", ""))
+            execute(
+                "INSERT INTO static_villages (pid, data) VALUES (%s, %s) "
+                "ON CONFLICT (pid) DO NOTHING",
+                [pid, _json_module.dumps(data)],
+            )
+        except Exception as e:
+            print(f"[sessions] Failed to migrate {filename}: {e}")
+
+
 # Load saved villages
 
 def load_saved_villages():
-    global __villages
-    global __saves
-    # Empty in memory
-    __villages = {}
+    """Load all villages from PostgreSQL into in-memory dicts.
+    Also creates tables and migrates static villages from disk on first run.
+    """
+    global __saves, __villages
     __saves = {}
-    # Saves dir check
-    if not os.path.exists(SAVES_DIR):
-        try:
-            print(f"Creating '{SAVES_DIR}' folder...")
-            os.mkdir(SAVES_DIR)
-        except:
-            print(f"Could not create '{SAVES_DIR}' folder.")
-            exit(1)
-    if not os.path.isdir(SAVES_DIR):
-        print(f"'{SAVES_DIR}' is not a folder... Move the file somewhere else.")
-        exit(1)
-    # Static neighbors in /villages
-    for file in os.listdir(VILLAGES_DIR):
-        if file == "initial.json" or not file.endswith(".json"):
-            continue
-        print(f" * Loading static neighbour {file}... ", end='')
-        village = json.load(open(os.path.join(VILLAGES_DIR, file)))
-        if not is_valid_village(village):
-            print("Invalid neighbour")
-            continue
-        USERID = village["playerInfo"]["pid"]
-        if str(USERID) in __villages:
-            print(f"Ignored: duplicated PID '{USERID}'.")
-        else:
-            __villages[str(USERID)] = village
-            print("Ok.")
-    # Saves in /saves
-    for file in os.listdir(SAVES_DIR):
-        if not file.endswith(".save.json"):
-            continue
-        print(f" * Loading save at {file}... ", end='')
-        try:
-            save = json.load(open(os.path.join(SAVES_DIR, file)))
-        except json.decoder.JSONDecodeError as e:
-            print("Corrupted JSON.")
-            continue
-        if not is_valid_village(save):
-            print("Invalid Save.")
-            continue
-        USERID = save["playerInfo"]["pid"]
-        try:
-            map_name = save["playerInfo"]["map_names"][ save["playerInfo"]["default_map"] ]
-        except:
-            map_name = '?'
-        print(f"({map_name}) Ok.")
-        __saves[str(USERID)] = save
-        modified = migrate_loaded_save(save) # check save version for migration
-        if modified:
-            save_session(USERID)
-    
+    __villages = {}
+
+    create_tables()
+    migrate_static_villages_from_disk()
+
+    try:
+        rows = query("SELECT user_id, save_data FROM player_saves")
+        for row in rows:
+            user_id = row["user_id"]
+            save_data = row["save_data"]
+            if isinstance(save_data, str):
+                save_data = _json_module.loads(save_data)
+            __saves[user_id] = save_data
+            migrate_loaded_save(__saves[user_id])
+    except Exception as e:
+        print(f"[sessions] Player saves load failed (DB may not be ready): {e}")
+
+    try:
+        rows = query("SELECT pid, data FROM static_villages")
+        for row in rows:
+            data = row["data"]
+            if isinstance(data, str):
+                data = _json_module.loads(data)
+            __villages[row["pid"]] = data
+    except Exception as e:
+        print(f"[sessions] Static villages load failed: {e}")
+
 
 # New village
 
@@ -109,8 +120,13 @@ def new_village() -> str:
     village["privateState"]["dartsRandomSeed"] = abs(int((2**16 - 1) * random.random()))
     # Memory saves
     __saves[USERID] = village
-    # Generate save file
-    save_session(USERID)
+    # Save to PostgreSQL
+    data_json = _json_module.dumps(__saves[USERID])
+    execute(
+        "INSERT INTO player_saves (user_id, save_data) VALUES (%s, %s) "
+        "ON CONFLICT (user_id) DO UPDATE SET save_data = EXCLUDED.save_data",
+        [USERID, data_json],
+    )
     print("Done.")
     return USERID
 
@@ -238,11 +254,19 @@ def backup_session(USERID: str):
     # TODO 
     return
 
-def save_session(USERID: str):
-    # TODO 
-    file = f"{USERID}.save.json"
-    print(f" * Saving village at {file}... ", end='')
-    village = session(USERID)
-    with open(os.path.join(SAVES_DIR, file), 'w') as f:
-        json.dump(village, f, indent=4)
-    print("Done.")
+def save_session(USERID):
+    """Save a player village to PostgreSQL via UPSERT."""
+    if USERID not in __saves:
+        print(f"[sessions] WARNING: save_session called for unknown USERID={USERID}")
+        return
+    data_json = _json_module.dumps(__saves[USERID])
+    try:
+        execute(
+            "INSERT INTO player_saves (user_id, save_data, updated_at) "
+            "VALUES (%s, %s, NOW()) ON CONFLICT (user_id) "
+            "DO UPDATE SET save_data = EXCLUDED.save_data, "
+            "updated_at = NOW()",
+            [USERID, data_json],
+        )
+    except Exception as e:
+        print(f"[sessions] Failed to save session for {USERID}: {e}")
