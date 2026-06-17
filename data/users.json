@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "username": "Cem31",
+    "password_hash": "$2b$12$NlwhNC1HHfvq4s.BwHc/vedQYDL46kbAtKAdJQarKsqLE9jXKIhpa",
+    "user_id": "4d9eeb71-7dc5-4827-94ea-cd4f1eee0446",
+    "created_at": "2026-06-17T00:00:00"
+  },
+  {
+    "id": 2,
+    "username": "Ugur31",
+    "password_hash": "$2b$12$LYS7mmlLXNDm.KAmgxWI1OseH8wItwOK2XvyFhh7G4uOI6IZp9epy",
+    "user_id": "43ee0a22-2843-4c31-a10d-3be98b8b0b12",
+    "created_at": "2026-06-17T00:00:00"
+  },
+  {
+    "id": 3,
+    "username": "L0sedeath",
+    "password_hash": "$2b$12$OSwi3VP73a/tEookI3kRN.DthjrT/eUsahVSThmMXYZrR6sTCo5iO",
+    "user_id": "14f4efaa-3722-4700-94ac-6c56aed3a1f5",
+    "created_at": "2026-06-17T00:00:00"
+  }
+]
