@@ -134,6 +134,29 @@ def new_village() -> str:
     print("Done.")
     return USERID
 
+
+def create_village_with_id(user_id: str) -> str:
+    """Verilen user_id ile yeni koy olustur. initial.json'dan kopyalar.
+    Auth sistemi tarafindan kullanilir — once UUID olusturulur, sonra koy kurulur.
+
+    Returns:
+        user_id (same as input, for chaining)
+    """
+    village = copy.deepcopy(__initial_village)
+    village["version"] = version_code
+    village["playerInfo"]["pid"] = user_id
+    village["maps"][0]["timestamp"] = timestamp_now()
+    village["privateState"]["dartsRandomSeed"] = abs(int((2**16 - 1) * random.random()))
+    __saves[user_id] = village
+    # PostgreSQL'e kaydet
+    data_json = _json_module.dumps(village)
+    execute(
+        "INSERT INTO player_saves (user_id, save_data) VALUES (%s, %s) "
+        "ON CONFLICT (user_id) DO UPDATE SET save_data = EXCLUDED.save_data",
+        [user_id, data_json],
+    )
+    return user_id
+
 # Access functions
 
 def all_saves_userid() -> list:
