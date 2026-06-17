@@ -144,7 +144,8 @@ def play():
     GAMEVERSION = session['GAMEVERSION']
     print("[PLAY] USERID:", USERID)
     print("[PLAY] GAMEVERSION:", GAMEVERSION)
-    return render_template("play.html", save_info=save_info(USERID), serverTime=timestamp_now(), friendsInfo=fb_friends_str(USERID), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=host)
+    server_host = request.host  # uses the actual host from the request
+    return render_template("play.html", save_info=save_info(USERID), serverTime=timestamp_now(), friendsInfo=fb_friends_str(USERID), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=server_host)
 
 @app.route("/ruffle.html")
 def ruffle():
@@ -157,12 +158,13 @@ def ruffle():
 
     if session['USERID'] not in all_saves_userid():
         return redirect("/")
-    
+
     USERID = session['USERID']
     GAMEVERSION = session['GAMEVERSION']
     print("[RUFFLE] USERID:", USERID)
     print("[RUFFLE] GAMEVERSION:", GAMEVERSION)
-    return render_template("ruffle.html", save_info=save_info(USERID), serverTime=timestamp_now(), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=host)
+    server_host = request.host
+    return render_template("ruffle.html", save_info=save_info(USERID), serverTime=timestamp_now(), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=server_host)
 
 
 @app.route("/new.html")
