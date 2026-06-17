@@ -32,6 +32,12 @@ port = 5050
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR)
 
+# Use Render-provided secret key or a dev fallback
+app.secret_key = os.environ.get("SECRET_KEY", "social-empires-dev-key-change-me")
+
+# Database URL for PostgreSQL
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
 print (" [+] Configuring server routes...")
 
 ##########
@@ -40,24 +46,77 @@ print (" [+] Configuring server routes...")
 
 ## PAGES AND RESOURCES
 
-@app.route("/", methods=['GET', 'POST'])
+@app.route("/")
+def index():
+    """Landing page: choose between Ruffle (modern browser) and FlashBrowser."""
+    return """
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Social Emperors</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .box {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            max-width: 500px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+        }
+        h1 { margin-top: 0; color: #e94560; }
+        .btn {
+            display: block;
+            margin: 16px auto;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .btn:hover { transform: scale(1.03); }
+        .btn-primary { background: #e94560; color: #fff; }
+        .btn-secondary { background: #0f3460; color: #ccc; border: 1px solid #333; }
+        .note { font-size: 13px; color: #888; margin-top: 24px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>🔥 Social Emperors</h1>
+        <p>Tarayicinda oyna — hicbir sey indirmene gerek yok.</p>
+        <a class="btn btn-primary" href="/ruffle.html">🎮 Tarayicida Oyna (Ruffle)</a>
+        <a class="btn btn-secondary" href="/play.html">💾 FlashBrowser ile Oyna</a>
+        <p class="note">
+            ⚠️ Ruffle ile oynarken bazi ozellikler calismayabilir.<br>
+            Sorun yasarsan FlashBrowser indirip ikinci secenegi kullan.
+        </p>
+    </div>
+</body>
+</html>
+"""
+
+@app.route("/login", methods=["POST"])
 def login():
-    # Log out previous session
+    """Handle login form submission."""
     session.pop('USERID', default=None)
     session.pop('GAMEVERSION', default=None)
-    # Reload saves. Allows saves modification without server reset
     load_saved_villages()
-    # If logging in, set session USERID, and go to play
-    if request.method == 'POST':
-        session['USERID'] = request.form['USERID']
-        session['GAMEVERSION'] = request.form['GAMEVERSION']
-        print("[LOGIN] USERID:", request.form['USERID'])
-        print("[LOGIN] GAMEVERSION:", request.form['GAMEVERSION'])
-        return redirect("/play.html")
-    # Login page
-    if request.method == 'GET':
-        saves_info = all_saves_info()
-        return render_template("login.html", saves_info=saves_info, version=version_name)
+    session['USERID'] = request.form['USERID']
+    session['GAMEVERSION'] = request.form['GAMEVERSION']
+    print("[LOGIN] USERID:", request.form['USERID'])
+    print("[LOGIN] GAMEVERSION:", request.form['GAMEVERSION'])
+    return redirect("/play.html")
 
 @app.route("/play.html")
 def play():
@@ -302,6 +361,8 @@ def get_continent_ranking_response():
 
 print (" [+] Running server...")
 
-if __name__ == '__main__':
-    app.secret_key = 'SECRET_KEY'
+if __name__ == "__main__":
+    # Dev server only — Render uses Gunicorn
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "5050"))
     app.run(host=host, port=port, debug=False)
