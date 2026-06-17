@@ -16,6 +16,7 @@ print (" [+] Loading players...")
 from get_player_info import get_player_info, get_neighbor_info
 from sessions import load_saved_villages, all_saves_userid, all_saves_info, save_info, new_village, fb_friends_str
 from auth import init_auth_tables, register_user, verify_login, get_all_players, get_player_count, username_exists
+from sessions import session as get_save_session
 load_saved_villages()
 try:
     init_auth_tables()
@@ -186,6 +187,17 @@ def index():
 </html>
 """
 
+def _is_new_player() -> bool:
+    """Check if the logged-in player hasn't completed the tutorial yet."""
+    try:
+        save = get_save_session(session.get('USERID', ''))
+        if save and save.get("playerInfo", {}).get("completed_tutorial", 1) == 0:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 @app.route("/login", methods=["POST"])
 def login():
     """Handle login form submission."""
@@ -206,6 +218,8 @@ def login():
     # Reload villages so the new player's village is in memory
     load_saved_villages()
 
+    if _is_new_player():
+        return redirect("/welcome")
     return redirect("/play.html")
 
 @app.route("/register", methods=["GET", "POST"])
@@ -238,17 +252,92 @@ def register():
         session['GAMEVERSION'] = "SocialEmpires0926bsec.swf"
         load_saved_villages()
 
-        return redirect("/play.html")
+        return redirect("/welcome")
 
     # GET — show registration form
     return render_template_string(REGISTER_FORM, error=None)
 
 
-@app.route("/logout")
-def logout():
-    """Clear session and return to landing page."""
-    session.clear()
-    return redirect("/")
+@app.route("/welcome")
+def welcome():
+    """Tutorial oncesi hos geldin sayfasi."""
+    if 'username' not in session or 'USERID' not in session:
+        return redirect("/")
+
+    username = session['username']
+
+    return f"""
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Hos Geldin — Social Emperors</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #1a1a2e; color: #eee; display: flex;
+            justify-content: center; align-items: center; min-height: 100vh;
+        }}
+        .container {{ max-width: 600px; padding: 20px; }}
+        .card {{
+            background: #16213e; border-radius: 16px; padding: 40px 32px;
+            text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+            border: 1px solid #2a2a4a;
+        }}
+        .icon {{ font-size: 64px; margin-bottom: 16px; }}
+        h1 {{ color: #e94560; font-size: 28px; margin-bottom: 8px; }}
+        .subtitle {{ color: #888; font-size: 14px; margin-bottom: 24px; }}
+        .lore {{
+            background: #0f1629; border-radius: 10px; padding: 20px;
+            text-align: left; margin: 20px 0; line-height: 1.8;
+            font-size: 15px; color: #ccc; border-left: 3px solid #e94560;
+        }}
+        .lore b {{ color: #e94560; }}
+        .btn {{
+            display: inline-block; margin: 12px 6px; padding: 16px 40px;
+            border-radius: 10px; text-decoration: none; font-size: 17px;
+            font-weight: 700; cursor: pointer; border: none;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }}
+        .btn:hover {{ transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,0.3); }}
+        .btn-start {{
+            background: linear-gradient(135deg, #e94560, #c23152);
+            color: #fff; font-size: 20px; padding: 18px 60px;
+        }}
+        .btn-skip {{
+            background: #333; color: #888; font-size: 13px; padding: 10px 24px;
+        }}
+        .footer {{ margin-top: 24px; color: #555; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="icon">🔥</div>
+            <h1>Imparatorlugun Seni Bekliyor!</h1>
+            <p class="subtitle">Hos geldin, <b>{username}</b></p>
+
+            <div class="lore">
+                <p>⚔️ <b>Yil 1024.</b> Kralliklar savas halinde.</p>
+                <p style="margin-top:8px;">🏰 Kucuk bir koy ile basliyorsun. Topragini genislet, ordunu kur, dusmanlarini fethet.</p>
+                <p style="margin-top:8px;">🐉 <b>Ejderhani sec.</b> Bu senin en buyuk gucun olacak — ates, buz ya da yildirim?</p>
+                <p style="margin-top:8px;">👑 <b>Imparatorluga giden yol</b> cesaret ister. Kararlarin kaderini belirleyecek.</p>
+            </div>
+
+            <p style="color:#aaa; font-size:14px; margin-top:20px;">
+            Oyun sana adim adim rehberlik edecek.<br>Hazir oldugunda basla!
+            </p>
+
+            <a class="btn btn-start" href="/play.html">🔥 Oyuna Basla</a>
+            <br>
+            <a class="btn btn-skip" href="/play.html?skip_tutorial=1">Atlaya Atlaya Gec →</a>
+        </div>
+        <p class="footer">Social Emperors — Ozel Sunucu</p>
+    </div>
+</body>
+</html>
+"""
 
 
 @app.route("/players")
