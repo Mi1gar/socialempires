@@ -79,8 +79,12 @@ def load_saved_villages():
     __saves = {}
     __villages = {}
 
-    create_tables()
-    migrate_static_villages_from_disk()
+    try:
+        create_tables()
+        migrate_static_villages_from_disk()
+    except Exception as e:
+        print(f"[sessions] DB setup failed (no PostgreSQL running?): {e}")
+        return  # Can't do anything without DB
 
     try:
         rows = query("SELECT user_id, save_data FROM player_saves")
