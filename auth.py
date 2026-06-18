@@ -15,9 +15,20 @@ def init_auth_tables():
             username      TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             user_id       TEXT UNIQUE NOT NULL,
+            is_guest      BOOLEAN DEFAULT FALSE,
+            last_ip       TEXT,
             created_at    TIMESTAMP DEFAULT NOW()
         )
     """)
+    # Add columns to existing tables (idempotent via IF NOT EXISTS)
+    try:
+        execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_guest BOOLEAN DEFAULT FALSE")
+    except Exception:
+        pass  # File-based fallback silently ignores ALTER TABLE
+    try:
+        execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ip TEXT")
+    except Exception:
+        pass
 
 
 def hash_password(password: str) -> str:
@@ -137,3 +148,59 @@ def change_password(username: str, old_password: str, new_password: str) -> bool
         [pw_hash, username]
     )
     return True
+
+
+def create_guest_user(nickname: str, ip_address: str) -> tuple | None:
+    """Misafir kullanici olustur. Basariliysa (username, user_id) donder.
+
+    Rumuz 'guest_' prefix'i ve rastgele suffix ile birlestirilerek
+    benzersiz username olusturulur. Sifre hash'i bos birakilir.
+    """
+    from sessions import create_village_with_id
+    import random
+    import string
+
+    # Benzersiz username olustur: guest_<rumuz>_<4 haneli suffix>
+    base = f"guest_{nickname}"
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+    username = f"{base}_{suffix}"
+
+    # Username kontrolu
+    while username_exists(username):
+        suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+        username = f"{base}_{suffix}"
+
+    user_id = str(uuid.uuid4())
+
+    # Kullaniciyi ekle — password_hash bos, is_guest=true
+    execute(
+        "INSERT INTO users (username, password_hash, user_id, is_guest, last_ip) "
+        "VALUES (%s, %s, %s, %s, %s)",
+        [username, '', user_id, True, ip_address]
+    )
+
+    # Koy olustur
+    create_village_with_id(user_id)
+
+    return username, user_id
+
+
+def get_guest_by_user_id(user_id: str) -> dict | None:
+    """user_id ile misafir kullaniciyi bul. Bulunamazsa None."""
+    rows = query(
+        "SELECT username, user_id, is_guest, last_ip FROM users "
+        "WHERE user_id = %s AND is_guest = TRUE",
+        [user_id]
+    )
+    return rows[0] if rows else None
+
+
+def get_guest_by_ip(ip_address: str, days: int = 7) -> dict | None:
+    """Ayni IP'den en son giris yapan misafiri bul. Yoksa None."""
+    rows = query(
+        "SELECT username, user_id, is_guest, last_ip FROM users "
+        "WHERE last_ip = %s AND is_guest = TRUE "
+        "ORDER BY created_at DESC LIMIT 1",
+        [ip_address]
+    )
+    return rows[0] if rows else None
