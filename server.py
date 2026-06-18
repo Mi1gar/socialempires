@@ -15,7 +15,7 @@ from get_game_config import get_game_config, patch_game_config
 print (" [+] Loading players...")
 from get_player_info import get_player_info, get_neighbor_info
 from sessions import load_saved_villages, all_saves_userid, all_saves_info, save_info, new_village, fb_friends_str
-from auth import init_auth_tables, register_user, verify_login, get_all_players, get_player_count, username_exists
+from auth import init_auth_tables, register_user, verify_login, get_all_players, get_player_count, username_exists, create_guest_user, get_guest_by_user_id, get_guest_by_ip
 from sessions import session as get_save_session
 load_saved_villages()
 try:
@@ -32,6 +32,14 @@ from version import version_name
 from constants import Constant
 from quests import get_quest_map
 from bundle import ASSETS_DIR, STUB_DIR, TEMPLATES_DIR, BASE_DIR
+
+
+def get_client_ip() -> str:
+    """Return the client's real IP address, accounting for proxy headers (Render)."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr or '127.0.0.1'
+
 
 host = '127.0.0.1'
 port = 5050
@@ -221,6 +229,126 @@ def login():
     if _is_new_player():
         return redirect("/welcome")
     return redirect("/play.html")
+
+
+@app.route("/guest")
+def guest_form():
+    """Misafir girisi icin rumuz formu."""
+    error = request.args.get('error', '')
+    error_html = f'<div class="error">{error}</div>' if error else ''
+    return f"""
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Misafir Girisi — Social Emperors</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e; color: #eee; display: flex; justify-content: center;
+            align-items: center; min-height: 100vh; margin: 0;
+        }}
+        .box {{ background: #16213e; border-radius: 12px; padding: 40px; text-align: center; max-width: 420px; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }}
+        h1 {{ margin-top: 0; color: #d4a574; }}
+        .input {{ width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #333; border-radius: 6px; background: #1a1a2e; color: #eee; font-size: 15px; box-sizing: border-box; }}
+        .btn {{ display: block; width: 100%; margin: 12px 0; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; border: none; transition: transform 0.1s; }}
+        .btn:hover {{ transform: scale(1.03); }}
+        .btn-primary {{ background: #d4a574; color: #1a1a2e; }}
+        .btn-back {{ background: #444; color: #aaa; }}
+        .error {{ background: #3d1a1a; color: #e94560; padding: 8px; border-radius: 4px; margin: 8px 0; font-size: 14px; }}
+        .hint {{ font-size: 12px; color: #666; margin-top: 16px; line-height: 1.6; }}
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>🎲 Misafir Girisi</h1>
+        {error_html}
+        <form method="POST" action="/guest-login">
+            <input class="input" type="text" name="nickname" placeholder="Rumuz (en az 3 karakter)" required minlength="3" autocomplete="off">
+            <button class="btn btn-primary" type="submit">🎮 Oyuna Basla</button>
+        </form>
+        <a class="btn btn-back" href="/">⬅ Geri Don</a>
+        <p class="hint">Rumuzun ve ilerlemen bu cihazda saklanir.<br>Daha sonra kayit olup hesabini kalici yapabilirsin.</p>
+    </div>
+</body>
+</html>
+"""
+
+
+@app.route("/guest-login", methods=["POST"])
+def guest_login():
+    """Handle guest login form submission."""
+    nickname = request.form.get('nickname', '').strip()
+
+    if not nickname or len(nickname) < 3:
+        return redirect("/guest?error=Rumuz+en+az+3+karakter+olmali")
+
+    client_ip = get_client_ip()
+    result = create_guest_user(nickname, client_ip)
+
+    if result is None:
+        return redirect("/guest?error=Misafir+hesabi+olusturulamadi.+Tekrar+deneyin.")
+
+    username, user_id = result
+    session['username'] = username
+    session['USERID'] = user_id
+    session['GAMEVERSION'] = "SocialEmpires0926bsec.swf"
+
+    # Reload villages so the new player's village is in memory
+    load_saved_villages()
+
+    # Set persistent cookie for guest recognition on return
+    resp = redirect("/welcome")
+    resp.set_cookie(
+        'guest_user_id',
+        value=user_id,
+        max_age=60 * 60 * 24 * 30,  # 30 days
+        httponly=True,
+        samesite='Lax'
+    )
+    return resp
+
+
+@app.route("/guest-continue", methods=["POST"])
+def guest_continue():
+    """Resume a previous guest session from cookie or IP."""
+    guest_user_id = request.cookies.get('guest_user_id')
+    guest = None
+
+    if guest_user_id:
+        guest = get_guest_by_user_id(guest_user_id)
+
+    # Cookie fallback: try IP matching
+    if guest is None:
+        client_ip = get_client_ip()
+        guest = get_guest_by_ip(client_ip)
+
+    if guest is None:
+        return redirect("/?error=Misafir+hesabi+bulunamadi")
+
+    session['username'] = guest['username']
+    session['USERID'] = guest['user_id']
+    session['GAMEVERSION'] = "SocialEmpires0926bsec.swf"
+    load_saved_villages()
+
+    # Refresh the cookie
+    resp = redirect("/play.html")
+    resp.set_cookie(
+        'guest_user_id',
+        value=guest['user_id'],
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        samesite='Lax'
+    )
+    return resp
+
+
+@app.route("/logout")
+def logout():
+    """Clear session but preserve guest cookie for future return."""
+    session.clear()
+    return redirect("/")
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
