@@ -149,7 +149,30 @@ def index():
 </html>
 """
     else:
-        # Not logged in — show login + register form
+        # Not logged in — check for returning guest
+        guest_user_id = request.cookies.get('guest_user_id')
+        returning_guest = None
+
+        if guest_user_id:
+            returning_guest = get_guest_by_user_id(guest_user_id)
+
+        if returning_guest is None:
+            client_ip = get_client_ip()
+            returning_guest = get_guest_by_ip(client_ip)
+
+        # Build returning guest prompt HTML if found
+        guest_prompt_html = ""
+        if returning_guest:
+            guest_prompt_html = f"""
+            <div class="guest-prompt">
+                <p>🎲 <b>{returning_guest['username']}</b> olarak misafir oynamaya devam etmek ister misin?</p>
+                <form method="POST" action="/guest-continue">
+                    <button class="btn btn-guest-continue" type="submit">✅ Evet, Devam Et</button>
+                </form>
+                <p class="or-text">—— veya ——</p>
+            </div>
+            """
+
         return f"""
 <!DOCTYPE html>
 <html lang="tr">
@@ -169,16 +192,22 @@ def index():
         .btn:hover {{ transform: scale(1.03); }}
         .btn-login {{ background: #e94560; color: #fff; }}
         .btn-register {{ background: #0f3460; color: #ccc; border: 1px solid #333; }}
+        .btn-guest {{ background: #d4a574; color: #1a1a2e; }}
+        .btn-guest-continue {{ background: #2d6a4f; color: #fff; }}
         .btn-players {{ background: #2d6a4f; color: #fff; }}
         .divider {{ margin: 16px 0; color: #666; font-size: 13px; }}
+        .or-text {{ color: #666; font-size: 13px; margin: 12px 0; }}
         .error {{ background: #3d1a1a; color: #e94560; padding: 8px; border-radius: 4px; margin: 8px 0; font-size: 14px; }}
         .note {{ font-size: 12px; color: #666; margin-top: 16px; }}
+        .guest-prompt {{ background: #1a2a1a; border: 1px solid #2d6a4f; border-radius: 8px; padding: 16px; margin: 12px 0; }}
+        .guest-prompt p {{ margin: 0 0 12px 0; color: #ccc; }}
     </style>
 </head>
 <body>
     <div class="box">
         <h1>🔥 Social Emperors</h1>
         {error_html}
+        {guest_prompt_html}
         <form method="POST" action="/login">
             <input class="input" type="text" name="username" placeholder="Kullanici adi" required autocomplete="username">
             <input class="input" type="password" name="password" placeholder="Sifre" required autocomplete="current-password">
@@ -187,6 +216,8 @@ def index():
         <form method="GET" action="/register">
             <button class="btn btn-register" type="submit">✨ Kayit Ol</button>
         </form>
+        <div class="divider">—— veya ——</div>
+        <a class="btn btn-guest" href="/guest">🎲 Misafir Olarak Oyna</a>
         <div class="divider">—— veya ——</div>
         <a class="btn btn-players" href="/players">📋 Oyuncu Listesi</a>
         <p class="note">⚠️ Ruffle ile oynarken bazi ozellikler calismayabilir.</p>
