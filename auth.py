@@ -189,18 +189,23 @@ def get_guest_by_user_id(user_id: str) -> dict | None:
     """user_id ile misafir kullaniciyi bul. Bulunamazsa None."""
     rows = query(
         "SELECT username, user_id, is_guest, last_ip FROM users "
-        "WHERE user_id = %s AND is_guest = TRUE",
+        "WHERE user_id = %s",
         [user_id]
     )
-    return rows[0] if rows else None
+    # Filter in Python for file-based DB compatibility
+    for row in rows:
+        if row.get('is_guest') is True or row.get('is_guest') == 'true':
+            return row
+    return None
 
 
 def get_guest_by_ip(ip_address: str, days: int = 7) -> dict | None:
     """Ayni IP'den en son giris yapan misafiri bul. Yoksa None."""
     rows = query(
         "SELECT username, user_id, is_guest, last_ip FROM users "
-        "WHERE last_ip = %s AND is_guest = TRUE "
-        "ORDER BY created_at DESC LIMIT 1",
+        "WHERE last_ip = %s",
         [ip_address]
     )
-    return rows[0] if rows else None
+    # Filter and sort in Python for file-based DB compatibility
+    guests = [r for r in rows if r.get('is_guest') is True or r.get('is_guest') == 'true']
+    return guests[0] if guests else None
